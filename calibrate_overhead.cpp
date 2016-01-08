@@ -2,6 +2,7 @@
 #include <pcl/point_types.h>
 #include <typeinfo>
 #include <string>
+#include <time.h>
 
 
 
@@ -296,24 +297,402 @@ pcl::PointCloud<pcl::PointXYZRGB> getFloorPlane(const pcl::PointCloud<pcl::Point
   return result;
 }
 
+
+
+
+std::vector<std::vector<bool> > convertPlane(const pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud,
+                                             const double& dist_threshold)
+{
+  std::vector<std::vector<bool> > result(cloud->height, std::vector<bool>(cloud->width));
+
+
+  int img_h = cloud->height;
+  int img_w = cloud->width;
+
+  
+  //initilize with all false, no position
+  for(int i = 0; i < img_h; ++i)
+    for(int j = 0; j < img_w; ++j)
+      result[i][j] = false;
+
+
+  pcl::ModelCoefficients::Ptr       coefficients (new pcl::ModelCoefficients);
+  pcl::PointIndices::Ptr            inliers (new pcl::PointIndices);
+
+  // Create the segmentation object
+  pcl::SACSegmentation<pcl::PointXYZRGB> seg;
+
+  // Optional
+  seg.setOptimizeCoefficients (true);
+
+  // Mandatory
+  seg.setModelType (pcl::SACMODEL_PLANE);
+  seg.setMethodType (pcl::SAC_RANSAC);
+  seg.setDistanceThreshold (dist_threshold);
+
+  seg.setInputCloud(cloud);
+  seg.segment(*inliers, *coefficients);
+
+  std::cout<<"\nNumber of points on floor plane: "<<inliers->indices.size();
+  
+  for(int i = 0; i < inliers->indices.size(); ++i)
+  {
+    int index = inliers->indices[i];
+    if( !isnan(cloud->points[index].x) && 
+        !isnan(cloud->points[index].y) && 
+        !isnan(cloud->points[index].z))
+    {
+      result[index/img_w][index%img_w] = true;
+    }
+  }
+
+
+  return result;
+}
+
+
+/*
+Find out the table region, which includes both the table plane and 
+  objects on the table.
+Assumption : the table region is in the middle, which occupies the most 
+  space of the image.
+@param table_plane : an array indicating which points belong to the table plane
+@param img_h : the height of the image
+@param img_w : the width of the image
+@return : returns an array indicating which points belong to the table region
+*/
+std::vector<std::vector<bool> > detect_table_region(const std::vector<std::vector<bool> > &table_plane,
+                                                  const int &img_h, const int &img_w){
+std::vector<std::vector<bool> > table_region(img_h, std::vector<bool>(img_w));
+
+  //initilize with all true
+  for(int i = 0; i < img_h; ++i)
+    for(int j = 0; j < img_w; ++j)
+      table_region[i][j] = true;
+      
+  //start from the edges of the image, and find out all the regions which 
+  //are outside the table plane.
+  std::vector<std::vector<bool> > visited(img_h, std::vector<bool>(img_w));
+  for(int i = 0; i < img_h; ++i)
+    for(int j = 0; j < img_w; ++j)
+      visited[i][j] = false;
+
+  std::stack<cv::Point2i> st;
+  //push all the points on the edges of the image if they are not on the tale plane
+  for(int i = 0; i < img_w; ++i)
+  {
+    cv::Point2i push_node;
+    if(!table_plane[0][i] && !visited[0][i])
+    {
+      push_node.y = 0;
+      push_node.x = i;
+      st.push(push_node);
+      visited[0][i] = true;
+    }
+    if(!table_plane[img_h-1][i] && !visited[img_h-1][i])
+    {
+      push_node.y = img_h - 1;
+      push_node.x = i;
+      st.push(push_node);
+      visited[img_h-1][i] = true;
+    }
+  }
+
+  for(int i = 0; i < img_h; ++i){
+    cv::Point2i push_node;
+    if(!table_plane[i][0] && !visited[i][0])
+    {
+      push_node.y = i;
+      push_node.x = 0;
+      st.push(push_node);
+      visited[i][0] = true;
+    }
+    if(!table_plane[i][img_w-1] && !visited[i][img_w-1])
+    {
+      push_node.y = i;
+      push_node.x = img_w - 1;
+      st.push(push_node);
+      visited[i][img_w-1] = true;
+    }
+  }
+
+  while(st.size())
+  {
+    cv::Point2i cur_node;
+    cur_node = st.top();
+    st.pop();
+
+    table_region[cur_node.y][cur_node.x] = false;
+
+    //push unvisited neighbors that do not belong to the talbe plane
+    cv::Point2i push_node;
+
+    push_node.y = cur_node.y - 1;
+    push_node.x = cur_node.x - 1;
+    if(push_node.y > 0 && push_node.y < img_h && 
+       push_node.x > 0 && push_node.x < img_w &&
+       !table_plane[push_node.y][push_node.x] &&
+       !visited[push_node.y][push_node.x])
+    {
+      st.push(push_node);
+      visited[push_node.y][push_node.x] = true;
+    }
+
+    push_node.y = cur_node.y - 1;
+    push_node.x = cur_node.x;
+    if(push_node.y > 0 && push_node.y < img_h && 
+       push_node.x > 0 && push_node.x < img_w &&
+       !table_plane[push_node.y][push_node.x] &&
+       !visited[push_node.y][push_node.x])
+    {
+      st.push(push_node);
+      visited[push_node.y][push_node.x] = true;
+    }
+      
+    push_node.y = cur_node.y - 1;
+    push_node.x = cur_node.x + 1;
+    if(push_node.y > 0 && push_node.y < img_h && 
+       push_node.x > 0 && push_node.x < img_w &&
+       !table_plane[push_node.y][push_node.x] &&
+       !visited[push_node.y][push_node.x])
+    {
+      st.push(push_node);
+      visited[push_node.y][push_node.x] = true;
+    }
+      
+    push_node.y = cur_node.y;
+    push_node.x = cur_node.x - 1;
+    if(push_node.y > 0 && push_node.y < img_h && 
+       push_node.x > 0 && push_node.x < img_w &&
+       !table_plane[push_node.y][push_node.x] &&
+       !visited[push_node.y][push_node.x])
+    {
+      st.push(push_node);
+      visited[push_node.y][push_node.x] = true;
+    }
+      
+    push_node.y = cur_node.y;
+    push_node.x = cur_node.x + 1;
+    if(push_node.y > 0 && push_node.y < img_h && 
+       push_node.x > 0 && push_node.x < img_w &&
+       !table_plane[push_node.y][push_node.x] &&
+       !visited[push_node.y][push_node.x])
+    {
+      st.push(push_node);
+      visited[push_node.y][push_node.x] = true;
+    }
+      
+    push_node.y = cur_node.y + 1;
+    push_node.x = cur_node.x - 1;
+    if(push_node.y > 0 && push_node.y < img_h && 
+       push_node.x > 0 && push_node.x < img_w &&
+       !table_plane[push_node.y][push_node.x] &&
+       !visited[push_node.y][push_node.x])
+    {
+      st.push(push_node);
+      visited[push_node.y][push_node.x] = true;
+    }
+      
+    push_node.y = cur_node.y + 1;
+    push_node.x = cur_node.x;
+    if(push_node.y > 0 && push_node.y < img_h && 
+       push_node.x > 0 && push_node.x < img_w &&
+       !table_plane[push_node.y][push_node.x] &&
+       !visited[push_node.y][push_node.x])
+    {
+      st.push(push_node);
+      visited[push_node.y][push_node.x] = true;
+    }
+      
+    push_node.y = cur_node.y + 1;
+    push_node.x = cur_node.x + 1;
+    if(push_node.y > 0 && push_node.y < img_h && 
+       push_node.x > 0 && push_node.x < img_w &&
+       !table_plane[push_node.y][push_node.x] &&
+       !visited[push_node.y][push_node.x])
+    {
+      st.push(push_node);
+      visited[push_node.y][push_node.x] = true;
+    }
+  }
+
+  return table_region;
+}
+
+
+
+/*
+  Segment the table region based on the connectivity to find out all 
+    the objects on the table.
+  @param table_region : an array indicating which points belong to the table region
+  @param table_plane : an array indicating which points belong to the table plane
+  @param img_h : the height of the image
+  @param img_w: the width of the image
+  @num_seg: returns the number of the segments of the table region
+  @return: returns all the segments of the table region based on the connectivity, 0 means the background
+*/
+std::vector<std::vector<int> > detect_all_objects_on_table(const std::vector<std::vector<bool> > &table_region,
+                                                           const std::vector<std::vector<bool> > &table_plane,
+                                                           const int &img_h, const int &img_w, int &num_seg)
+{
+  std::vector<std::vector<int> > segment_indices(img_h, std::vector<int>(img_w));
+  num_seg = 0;
+  
+  //initilize with all true
+  for(int i = 0; i < img_h; ++i)
+    for(int j = 0; j < img_w; ++j)
+      segment_indices[i][j] = 0;
+      
+  std::vector<std::vector<bool> > visited(img_h, std::vector<bool>(img_w));
+  for(int i = 0; i < img_h; ++i)
+    for(int j = 0; j < img_w; ++j)
+      visited[i][j] = false;
+      
+  for(int i = 0; i < img_h; ++i){
+    for(int j = 0; j < img_w; ++j){
+    if(visited[i][j] || !table_region[i][j] || table_plane[i][j])
+      continue;
+    
+    //find out a new segment
+    ++num_seg;
+    std::stack<cv::Point2i> st;
+    cv::Point2i fst_node;
+    fst_node.y = i;
+    fst_node.x = j;
+    st.push(fst_node);
+    visited[i][j] = true;
+    
+    while(st.size()){
+    cv::Point2i cur_node;
+    cur_node = st.top();
+    st.pop();
+    
+    segment_indices[cur_node.y][cur_node.x] = num_seg;
+      
+      //push unvisited neighbors that belongs to the same segment
+      cv::Point2i push_node;
+  
+    push_node.y = cur_node.y - 1;
+    push_node.x = cur_node.x - 1;
+    if(push_node.y > 0 && push_node.y < img_h && 
+       push_node.x > 0 && push_node.x < img_w &&
+       table_region[push_node.y][push_node.x] &&
+       !table_plane[push_node.y][push_node.x] &&
+       !visited[push_node.y][push_node.x]){
+      st.push(push_node);
+      visited[push_node.y][push_node.x] = true;
+    }
+  
+      push_node.y = cur_node.y - 1;
+      push_node.x = cur_node.x;
+      if(push_node.y > 0 && push_node.y < img_h && 
+         push_node.x > 0 && push_node.x < img_w &&
+         table_region[push_node.y][push_node.x] &&
+       !table_plane[push_node.y][push_node.x] &&
+         !visited[push_node.y][push_node.x]){
+        st.push(push_node);
+        visited[push_node.y][push_node.x] = true;
+        }
+    
+      push_node.y = cur_node.y - 1;
+      push_node.x = cur_node.x + 1;
+      if(push_node.y > 0 && push_node.y < img_h && 
+         push_node.x > 0 && push_node.x < img_w &&
+         table_region[push_node.y][push_node.x] &&
+       !table_plane[push_node.y][push_node.x] &&
+         !visited[push_node.y][push_node.x]){
+        st.push(push_node);
+        visited[push_node.y][push_node.x] = true;
+        }
+    
+      push_node.y = cur_node.y;
+      push_node.x = cur_node.x - 1;
+      if(push_node.y > 0 && push_node.y < img_h && 
+         push_node.x > 0 && push_node.x < img_w &&
+         table_region[push_node.y][push_node.x] &&
+       !table_plane[push_node.y][push_node.x] &&
+         !visited[push_node.y][push_node.x]){
+        st.push(push_node);
+        visited[push_node.y][push_node.x] = true;
+        }
+    
+      push_node.y = cur_node.y;
+      push_node.x = cur_node.x + 1;
+      if(push_node.y > 0 && push_node.y < img_h && 
+         push_node.x > 0 && push_node.x < img_w &&
+         table_region[push_node.y][push_node.x] &&
+       !table_plane[push_node.y][push_node.x] &&
+         !visited[push_node.y][push_node.x]){
+        st.push(push_node);
+        visited[push_node.y][push_node.x] = true;
+        }
+    
+      push_node.y = cur_node.y + 1;
+      push_node.x = cur_node.x - 1;
+      if(push_node.y > 0 && push_node.y < img_h && 
+         push_node.x > 0 && push_node.x < img_w &&
+         table_region[push_node.y][push_node.x] &&
+       !table_plane[push_node.y][push_node.x] &&
+         !visited[push_node.y][push_node.x]){
+        st.push(push_node);
+        visited[push_node.y][push_node.x] = true;
+        }
+    
+      push_node.y = cur_node.y + 1;
+      push_node.x = cur_node.x;
+      if(push_node.y > 0 && push_node.y < img_h && 
+         push_node.x > 0 && push_node.x < img_w &&
+         table_region[push_node.y][push_node.x] &&
+       !table_plane[push_node.y][push_node.x] &&
+         !visited[push_node.y][push_node.x]){
+        st.push(push_node);
+        visited[push_node.y][push_node.x] = true;
+        }
+    
+      push_node.y = cur_node.y + 1;
+      push_node.x = cur_node.x + 1;
+      if(push_node.y > 0 && push_node.y < img_h && 
+         push_node.x > 0 && push_node.x < img_w &&
+         table_region[push_node.y][push_node.x] &&
+       !table_plane[push_node.y][push_node.x] &&
+         !visited[push_node.y][push_node.x]){
+        st.push(push_node);
+        visited[push_node.y][push_node.x] = true;
+        }
+    
+    }
+  }
+  }  
+  
+  return segment_indices;
+}
+
+
+
+
+
+
 int main(int argc, char** argv)
 {
 
   // Get the scene point cloud
-  std::string filename = "tmp/scene_1_4.pcd";
+  std::string filename = "tmp/scene_1_10.pcd";
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud = getCloud(filename);
 
-  std::string filename_im = "tmp/scene_1_4.png";
+  std::string filename_im = "tmp/scene_1_10.png";
   writeCloud(filename, filename_im, *cloud);
 
 
 
   // Get the floor plane
-  pcl::PointCloud<pcl::PointXYZRGB> floor_plane = getFloorPlane(cloud);
+  //pcl::PointCloud<pcl::PointXYZRGB> floor_plane = getFloorPlane(cloud);
 
   std::string floor_pcd = "tmp/floor_plane.pcd";
   std::string floor_im = "tmp/floor_plane.jpg";
-  writeCloud(floor_pcd, floor_im, floor_plane);
+  //writeCloud(floor_pcd, floor_im, floor_plane);
+
+
+/***********************************************************************************
 
   // Get the RGB clusters from floor plane
   std::vector<pcl::PointIndices> rgb_clusters = getRGBClusters(floor_plane);
@@ -409,6 +788,64 @@ int main(int argc, char** argv)
   //getCenterOfRegion(floor_plane, r_square);
   
   //useSegment(floor_plane);
+  
+
+
+
+***********************************************************************************/
+
+
+
+  int num_seg = 1;
+
+  std::vector<std::vector<bool> > floor_plane_vec   = convertPlane(cloud, 0.1);
+  std::vector<std::vector<bool> > floor_region_vec  = detect_table_region(floor_plane_vec, cloud->height, cloud->width);
+
+
+  clock_t start = clock();
+
+  std::vector<std::vector<int> >  objects           = detect_all_objects_on_table(floor_region_vec,
+                                                                                  floor_plane_vec,
+                                                                                  cloud->height,
+                                                                                  cloud->width,
+                                                                                  num_seg);
+  clock_t stop = clock();
+
+  double elapsed = (double)(stop - start) / CLOCKS_PER_SEC;
+  printf("\nElapsed time to get objects: %f\n", elapsed);
+  
+
+  //candidate colors to show the results
+  unsigned char colors[100][3];
+  colors[0][0] = colors[0][1] = colors[0][2] = 0;
+  for(int i = 1; i < 100; ++i){
+  colors[i][0] = (unsigned char)rand()%256;
+  colors[i][1] = (unsigned char)rand()%256;
+  colors[i][2] = (unsigned char)rand()%256;
+  }
+  colors[0][0] = 0;   colors[0][1] = 0;   colors[0][2] = 0;
+  colors[2][0] = 0;   colors[2][1] = 255; colors[2][2] = 0; //green
+  colors[3][0] = 0;   colors[3][1] = 0;   colors[3][2] = 255;  //red
+  colors[4][0] = 255; colors[4][1] = 0;   colors[4][2] = 0;  //blue
+
+
+  //show the segments
+  cv::Mat img_bgr_segments(cloud->height, cloud->width, CV_8UC3);
+  for(int i = 0; i < cloud->height; ++i){
+  for(int j = 0; j < cloud->width; ++j){
+    if(floor_region_vec[i][j] && floor_plane_vec[i][j]){
+        img_bgr_segments.at<cv::Vec3b>(i, j)[0] = 255;
+        img_bgr_segments.at<cv::Vec3b>(i, j)[1] = 0;
+        img_bgr_segments.at<cv::Vec3b>(i, j)[2] = 255;
+    }else{
+        img_bgr_segments.at<cv::Vec3b>(i, j)[0] = colors[objects[i][j]][0];
+        img_bgr_segments.at<cv::Vec3b>(i, j)[1] = colors[objects[i][j]][1];
+        img_bgr_segments.at<cv::Vec3b>(i, j)[2] = colors[objects[i][j]][2];
+    }	  
+  }
+  }
+
+  cv::imwrite("img_bgr_segments.jpg", img_bgr_segments);
 
   printf("\nExiting normally\n");
   return 0;
