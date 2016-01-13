@@ -52,17 +52,6 @@ void writeCloud(const std::string filename_pcd, const std::string filename_image
     for(int j = 0; j < cloud.width; ++j) 
     {
       int index = i * cloud.width + j;
-     /* if(index % 10000 == 0)
-      {
-        std::cout<<"\nPoint "<<index<<" rgb: "<<(int)cloud.points[index].r<<" "<<(int)cloud.points[index].g<<" "<<(int)cloud.points[index].b;
-        std::cout<<"\nSize of opencv points: "<<sizeof(img.at<cv::Vec3b>(i, j)[0]);
-        std::cout<<"\nSize of cloud points: "<<sizeof(cloud.points[index].b);
-        std::cout<<"\nType of opencv rgb: "<<typeid(img.at<cv::Vec3b>(i, j)[0]).name()<<"\n";
-        std::cout<<"\nType of opencv rgb: "<<typeid(img.at<cv::Vec3b>(i, j)).name();
-        std::cout<<"\nType of opencv unsigned char: "<<typeid(unsigned char).name()<<"\n";
-        std::cout<<"\nType of opencv unsigned short: "<<typeid(short).name()<<"\n";
-        std::cout<<"\nType of opencv unsigned char: "<<typeid(unsigned char).name()<<"\n";
-      }*/
 
       img.at<cv::Vec3b>(i, j)[0] = cloud.points[index].b;
       img.at<cv::Vec3b>(i, j)[1] = cloud.points[index].g;
@@ -200,11 +189,11 @@ const pcl::PointIndices findGreenSquare(pcl::PointCloud<pcl::PointXYZRGB> cloud,
     }
   } // end for
 
-  std::cout<<"\nReturning green square\n";
-
   // Return the largest cluster 
   result = green_clusters.at(i_green_square);
 
+
+  std::cout<<"\nReturning green square\n";
   return result;
 }
 
@@ -669,6 +658,87 @@ std::vector<std::vector<int> > detect_all_objects_on_table(const std::vector<std
 
 
 
+std::vector< std::vector<int> > getObjectIndices(const std::vector< std::vector<int> > objects)
+{
+  std::vector< std::vector<int> > result;
+
+  for(int i=0;i<objects.size();i++)
+  {
+    for(int j=0;j<objects.at(0).size();j++)
+    {
+      int index = i * objects.at(0).size() + j;
+      if(result.size() > objects[i][j])
+      {
+        result.at(objects[i][j]).push_back(index);
+      }
+      else
+      {
+        std::vector<int> ob;
+        ob.push_back(index);
+        result.push_back(ob);
+      }
+    }
+  }
+
+
+  // Sort by largest
+  for(int i=0;i<result.size();i++)
+  {
+    int start = i;
+    for(int j=0;j<result.size();j++)
+    {
+      if(result.at(j).size() < result.at(start).size())
+      {
+        std::vector<int> swap = result.at(i);
+        result.at(i) = result.at(j);
+        result.at(j) = swap;
+      }
+    }
+  }
+
+
+  for(int i=0;i<result.size();i++)
+  {
+    printf("\nresult[%i].size(): %i", i, (int)result[i].size());
+  }
+
+  return result;
+}
+
+
+const tf::Vector3 getCenter(const pcl::PointCloud<pcl::PointXYZRGB> cloud, const std::vector<int> points)
+{
+  /*float x_min = cloud.points[points[0]].x; 
+  float x_max = cloud.points[points[0]].x; 
+  float y_min = cloud.points[points[0]].y; 
+  float y_max = cloud.points[points[0]].y; */
+
+  double x_cen=0.;
+  double y_cen=0.;
+
+  for(int i=0;i<points.size();i++)
+  {
+    if(!isnan(cloud.points[points[i]].x) && !isnan(cloud.points[points[i]].y))
+    {
+      x_cen += cloud.points[points[i]].x;
+      y_cen += cloud.points[points[i]].y;
+    }
+  }
+
+
+  x_cen /= points.size();
+  y_cen /= points.size();
+
+  tf::Vector3 result(x_cen, y_cen, 0.f);
+  return result;
+}
+
+
+
+const int getCenter2(const pcl::PointCloud<pcl::PointXYZRGB> cloud, const std::vector<int> points)
+{
+  return points.at(points.size() / 2);
+}
 
 
 
@@ -676,23 +746,22 @@ int main(int argc, char** argv)
 {
 
   // Get the scene point cloud
-  std::string filename = "tmp/scene_1_10.pcd";
+  std::string filename = "tmp/scene_1_4.pcd";
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud = getCloud(filename);
 
-  std::string filename_im = "tmp/scene_1_10.png";
+  std::string filename_im = "tmp/scene_1_4.png";
   writeCloud(filename, filename_im, *cloud);
 
 
 
   // Get the floor plane
-  //pcl::PointCloud<pcl::PointXYZRGB> floor_plane = getFloorPlane(cloud);
+  pcl::PointCloud<pcl::PointXYZRGB> floor_plane = getFloorPlane(cloud);
 
   std::string floor_pcd = "tmp/floor_plane.pcd";
   std::string floor_im = "tmp/floor_plane.jpg";
-  //writeCloud(floor_pcd, floor_im, floor_plane);
+  writeCloud(floor_pcd, floor_im, floor_plane);
 
 
-/***********************************************************************************
 
   // Get the RGB clusters from floor plane
   std::vector<pcl::PointIndices> rgb_clusters = getRGBClusters(floor_plane);
@@ -792,11 +861,17 @@ int main(int argc, char** argv)
 
 
 
-***********************************************************************************/
+/***********************************************************************************/
+
+  filename = "tmp/scene_1_10.pcd";
+  cloud = getCloud(filename);
+
+  filename_im = "tmp/scene_1_10.png";
+  writeCloud(filename, filename_im, *cloud);
 
 
 
-  int num_seg = 1;
+  int num_seg = 50;
 
   std::vector<std::vector<bool> > floor_plane_vec   = convertPlane(cloud, 0.1);
   std::vector<std::vector<bool> > floor_region_vec  = detect_table_region(floor_plane_vec, cloud->height, cloud->width);
@@ -831,21 +906,100 @@ int main(int argc, char** argv)
 
   //show the segments
   cv::Mat img_bgr_segments(cloud->height, cloud->width, CV_8UC3);
-  for(int i = 0; i < cloud->height; ++i){
-  for(int j = 0; j < cloud->width; ++j){
-    if(floor_region_vec[i][j] && floor_plane_vec[i][j]){
-        img_bgr_segments.at<cv::Vec3b>(i, j)[0] = 255;
-        img_bgr_segments.at<cv::Vec3b>(i, j)[1] = 0;
-        img_bgr_segments.at<cv::Vec3b>(i, j)[2] = 255;
-    }else{
-        img_bgr_segments.at<cv::Vec3b>(i, j)[0] = colors[objects[i][j]][0];
-        img_bgr_segments.at<cv::Vec3b>(i, j)[1] = colors[objects[i][j]][1];
-        img_bgr_segments.at<cv::Vec3b>(i, j)[2] = colors[objects[i][j]][2];
-    }	  
-  }
+  for(int i = 0; i < cloud->height; ++i)
+  {
+    for(int j = 0; j < cloud->width; ++j)
+    {
+      if(floor_region_vec[i][j] && floor_plane_vec[i][j])
+      {
+          img_bgr_segments.at<cv::Vec3b>(i, j)[0] = 255;
+          img_bgr_segments.at<cv::Vec3b>(i, j)[1] = 0;
+          img_bgr_segments.at<cv::Vec3b>(i, j)[2] = 255;
+      }
+      else
+      {
+          img_bgr_segments.at<cv::Vec3b>(i, j)[0] = colors[objects[i][j]][0];
+          img_bgr_segments.at<cv::Vec3b>(i, j)[1] = colors[objects[i][j]][1];
+          img_bgr_segments.at<cv::Vec3b>(i, j)[2] = colors[objects[i][j]][2];
+      }
+    }
   }
 
+
+  //getCenterOfSegment(objects.at(1));
+  printf("\nSize of objects: %i", (int)objects.size());
+
   cv::imwrite("img_bgr_segments.jpg", img_bgr_segments);
+
+
+  std::vector<int> i_ones;
+  // Find the indices of the pixels
+  for(int i = 0; i < cloud->height; ++i)
+  {
+    for(int j = 0; j < cloud->width; ++j)
+    {
+      int index = i*cloud->width + j;
+      //printf("\nobjects[%i][%i]: %i", i, j, objects[i][j]);
+      
+      if(objects[i][j] == 3)
+      {
+        i_ones.push_back(index);
+      }
+    }
+  }
+
+  std::vector< std::vector<int> > obs = getObjectIndices(objects);
+  for(int i=1;i<5;i++)
+  {
+    //for(int j=0;j<obs[i].size();j++)
+    //{
+    tf::Vector3 cen = getCenter(*cloud, obs[i]);
+    int k = getCenter2(*cloud, obs[i]);
+    int k_row = k % cloud->width;
+    int k_col = k / cloud->height;
+
+    if(i==1)
+    {
+      cloud->points[k].r = 255;
+      cloud->points[k].g = 255;
+      cloud->points[k].b = 255;
+    }
+
+    else if(i==2)
+    {
+      cloud->points[k].r = 255;
+      cloud->points[k].g = 0;
+      cloud->points[k].b = 0;
+    }
+
+    else if(i==3)
+    {
+      cloud->points[k].r = 0;
+      cloud->points[k].g = 255;
+      cloud->points[k].b = 0;
+    }
+
+    else
+    {
+      cloud->points[k].r = 0;
+      cloud->points[k].g = 0;
+      cloud->points[k].b = 255;
+    }
+
+    tf::Vector3 k_cen(cloud->points[k].x, cloud->points[k].y, 0);
+    //tf::Vector3 trans_k_cen = tf_cam * k_cen;
+
+    printf("\nAverage Center: (%f, %f)", cen.getX(), cen.getY());
+    printf("\nAverage Point center: (%f, %f)", k_cen.getX(), k_cen.getY());
+    
+    /*cloud->points[obs[i][j]].r = 255;
+    cloud->points[obs[i][j]].g = 255;
+    cloud->points[obs[i][j]].b = 255;
+    }*/
+  }
+
+  
+  writeCloud("test_segments.pcd", "test_segments.jpg", *cloud);
 
   printf("\nExiting normally\n");
   return 0;
