@@ -1,0 +1,227 @@
+#include <ros/ros.h>
+#include "geometry_msgs/Twist.h"
+
+ros::Publisher pub;
+
+
+void turn(const double v, const double w, const double t)
+{
+  ros::Rate r(5);
+  ros::Duration d(t);
+  geometry_msgs::Twist twist;
+  
+  twist.linear.x = v;
+  twist.linear.y = 0.f;
+  twist.linear.z = 0.f;
+  twist.angular.x = 0.f;
+  twist.angular.y = 0.f;
+  twist.angular.z = w;
+ 
+  // Drive
+  ros::Time start = ros::Time::now();
+  while(ros::Time::now() - start < d)
+  {
+    ROS_INFO("twist: %f %f", twist.linear.x, twist.angular.z);
+    pub.publish(twist);
+    r.sleep();
+  } // end while
+}
+
+
+
+
+/*void SLike(const int index, const double v, const double w, const double t)
+{
+  double t_each = t/4.f;
+
+  turn(v, w, t_each);
+  turn(index, v, -w, t_each);
+  turn(index, v, w, t_each);
+  turn(index, v, -w, t_each);
+}*/
+
+
+void driveStraight(const double v, const double t)
+{
+  //ROS_INFO("In driveStraight");
+
+  ros::Rate r(25);
+  ros::Duration d(t);
+  geometry_msgs::Twist twist;
+  
+  twist.linear.x = v;
+  twist.linear.y = 0.f;
+  twist.linear.z = 0.f;
+  twist.angular.x = 0.f;
+  twist.angular.y = 0.f;
+  twist.angular.z = 0.f;
+ 
+  // Drive forward
+  ros::Time start = ros::Time::now();
+  while(ros::ok() && ros::Time::now() - start < d)
+  {
+    pub.publish(twist);
+    r.sleep();
+  } // end while
+}
+
+
+void publishToOb()
+{
+  ros::Rate r(50);
+  ros::Duration d(1.5);
+  geometry_msgs::Twist twist;
+  
+  
+  twist.linear.x = 0.28f;
+  twist.linear.y = 0.f;
+  twist.linear.z = 0.f;
+  twist.angular.x = 0.f;
+  twist.angular.y = 0.f;
+  twist.angular.z = 0.f;
+
+  /*
+   * Set motion for Obstacle 1
+   */
+  //driveStraight(0.33, 10);
+    
+
+ 
+    // Drive forward
+    ros::Time t = ros::Time::now();
+    while(ros::ok() && ros::Time::now() - t < d)
+    {
+      pub.publish(twist);
+      r.sleep();
+    }
+
+    //driveStraight(0.33, 1);
+
+    // Self-rotate
+    /*twist.linear.x = 0;
+    twist.angular.z = 0.44;
+
+    d = ros::Duration(1.5);
+    t = ros::Time::now();
+    while(ros::Time::now() - t < d)
+    {
+      pub_twist.publish(twist);
+
+      r.sleep();
+    }*/
+    
+
+
+    // Translate+rotate
+    twist.linear.x = 0.33;
+    twist.angular.z = -0.64;
+    //twist.angular.z = -0.68;
+
+    d = ros::Duration(1.75);
+    t = ros::Time::now();
+    while(ros::ok() && ros::Time::now() - t < d)
+    {
+      pub.publish(twist);
+      r.sleep();
+    }
+
+    //driveStraight(0.33, 1);
+
+    // Self rotate
+    twist.linear.x = 0.28;
+    twist.angular.z = 0.8;
+    //twist.angular.z = 0.8;
+
+    d = ros::Duration(2.5);
+    t = ros::Time::now();
+    while(ros::ok() && ros::Time::now() - t < d)
+    {
+      pub.publish(twist);
+      r.sleep();
+    }
+
+    //driveStraight(0.33, 1);
+
+    // Self rotate
+    twist.linear.x = 0.28;
+    twist.angular.z = -0.64;
+    //twist.angular.z = 0.8;
+
+    d = ros::Duration(3);
+    t = ros::Time::now();
+    while(ros::ok() && ros::Time::now() - t < d)
+    {
+      pub.publish(twist);
+      r.sleep();
+    }
+
+    //driveStraight(0.33, 1);
+
+    // Self rotate
+    twist.linear.x = 0.28;
+    twist.angular.z = 0.8;
+    //twist.angular.z = 0.8;
+
+    d = ros::Duration(2.25);
+    t = ros::Time::now();
+    while(ros::ok() && ros::Time::now() - t < d)
+    {
+      pub.publish(twist);
+      r.sleep();
+    }
+
+
+    //driveStraight(0.33, 1);
+  
+  // Stop
+  twist.linear.x = 0.;
+  twist.angular.z = 0.;
+  for(int i=0;i<10;i++)
+  {
+    pub.publish(twist);
+  }
+}
+
+
+
+int main(int argc, char** argv)
+{
+  ros::init(argc, argv, "obstacle");
+  ros::NodeHandle handle;
+  double delay = 1;
+
+  
+  // Create publisher
+  pub = handle.advertise<geometry_msgs::Twist>("mobile_base/commands/velocity", 1000);
+
+  ROS_INFO("Waiting for /ramp/cc_started=true...");
+
+  // Wait for ramp to start moving the robot
+  bool cc_started = false;
+  ros::Rate r(100);
+  while(!cc_started)
+  {
+    handle.getParam("/ramp/cc_started", cc_started);
+    //ROS_INFO("/ramp/cc_started: %s", cc_started ? "True" : "False");
+    r.sleep();
+    ros::spinOnce();
+  }
+
+
+  ros::Duration d(delay);
+  d.sleep();
+ 
+  ROS_INFO("Starting obstacle motion!");
+
+  
+  // Start motion
+  publishToOb();
+
+  ROS_INFO("Obstacle node done");
+  
+  /*ros::AsyncSpinner spinner(8);
+  std::cout<<"\nWaiting for requests...\n";
+  spinner.start();
+  ros::waitForShutdown();*/
+  return 0;
+}
