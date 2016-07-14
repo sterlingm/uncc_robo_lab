@@ -18,6 +18,8 @@ IF (PCL_FOUND)
   MESSAGE("-- PCL_DEFINITIONS: ${PCL_DEFINITIONS}")
 ENDIF (PCL_FOUND)
 
+find_package(catkin REQUIRED COMPONENTS roscpp tf std_msgs)
+
 include_directories(
   ${OpenCV_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
@@ -34,29 +36,30 @@ add_definitions(
 
 aux_source_directory(. DIR_SRCS)
 
-add_executable(capture_cloud capture-image.cpp)
-target_link_libraries(capture_cloud 
-  ${OpenCV_LIBS}
-  ${PCL_LIBRARIES}
-)
+#add_executable(capture_cloud capture-image.cpp)
+#target_link_libraries(capture_cloud 
+#  ${OpenCV_LIBS}
+#  ${PCL_LIBRARIES}
+#)
 
 
-add_executable(calibrate calibrate.cpp)
+add_executable(calibrate calibrate_overhead.cpp)
 target_link_libraries(calibrate 
   ${OpenCV_LIBS}
   ${PCL_LIBRARIES}
+  ${catkin_LIBRARIES}
 )
 
 
-add_executable(cloud_viewer cloud_viewer.cpp)
-target_link_libraries(cloud_viewer
-  ${OpenCV_LIBS}
-  ${PCL_LIBRARIES}
-)
+#add_executable(cloud_viewer cloud_viewer.cpp)
+#target_link_libraries(cloud_viewer
+#  ${OpenCV_LIBS}
+#  ${PCL_LIBRARIES}
+#)
 
 
-add_executable(tracking tracking.cpp)
-target_link_libraries(tracking
-  ${OpenCV_LIBS}
-  ${PCL_LIBRARIES}
-)
+#add_executable(tracking tracking.cpp)
+#target_link_libraries(tracking
+#   ${OpenCV_LIBS}
+#   ${PCL_LIBRARIES}
+#)

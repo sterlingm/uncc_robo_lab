@@ -386,7 +386,7 @@ int main(int argc, char** argv)
 
 
   static tf::TransformBroadcaster br;
-  br.sendTransform(tf::StampedTransform(tf_cam, ros::Time::now(), "world", "cam_overhead");
+  br.sendTransform(tf::StampedTransform(tf_cam, ros::Time::now(), "world", "cam_overhead"));
   
 
   printf("\nExiting normally\n");
