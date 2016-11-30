@@ -43,6 +43,7 @@ target_link_libraries(capture_cloud
 
 add_executable(calibrate calibrate.cpp)
 target_link_libraries(calibrate 
+  ${catkin_LIBRARIES}
   ${OpenCV_LIBS}
   ${PCL_LIBRARIES}
 )
