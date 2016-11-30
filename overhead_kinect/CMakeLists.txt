@@ -53,10 +53,3 @@ target_link_libraries(cloud_viewer
   ${OpenCV_LIBS}
   ${PCL_LIBRARIES}
 )
-
-
-add_executable(tracking tracking.cpp)
-target_link_libraries(tracking
-  ${OpenCV_LIBS}
-  ${PCL_LIBRARIES}
-)
