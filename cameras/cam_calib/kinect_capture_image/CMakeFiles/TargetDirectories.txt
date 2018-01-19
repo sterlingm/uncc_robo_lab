@@ -1,0 +1,1 @@
+/home/huitan/codes/capture_image/CMakeFiles/capture_image.dir
